@@ -1,26 +1,72 @@
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
 
-// This method is called when your extension is activated
-// Your extension is activated the very first time the command is executed
-export function activate(context: vscode.ExtensionContext) {
-
-	// Use the console to output diagnostic information (console.log) and errors (console.error)
-	// This line of code will only be executed once when your extension is activated
-	console.log('Congratulations, your extension "code-history-pro" is now active!');
-
-	// The command has been defined in the package.json file
-	// Now provide the implementation of the command with registerCommand
-	// The commandId parameter must match the command field in package.json
-	const disposable = vscode.commands.registerCommand('code-history-pro.helloWorld', () => {
-		// The code you place here will be executed every time your command is executed
-		// Display a message box to the user
-		vscode.window.showInformationMessage('Hello World from code-history-pro!');
-	});
-
-	context.subscriptions.push(disposable);
+function getWebviewContent(logEntries: any[]): string {
+    return `
+        <!DOCTYPE html>
+        <html>
+        <body>
+            <h1>Code History Pro: Git Log</h1>
+            <pre>${JSON.stringify(logEntries, null, 2)}</pre>
+        </body>
+        </html>
+    `;
 }
 
-// This method is called when your extension is deactivated
+const logEntries: string[] = vscode.workspace.getConfiguration().get('codeHistoryPro.logEntries', []);
+
+
+export function activate(context: vscode.ExtensionContext) {
+    console.log('Congratulations, your extension "code-history-pro" is now active!');
+
+    let disposable = vscode.commands.registerCommand('codeHistoryPro.helloWorld', () => {
+        vscode.window.showInformationMessage('Hello World from Code History Pro!');
+		const panel = vscode.window.createWebviewPanel(
+			'codeHistoryProLogView',
+			'Code History Pro: Git Log',
+			vscode.ViewColumn.One,
+			{ enableScripts: true }
+		);
+
+		// Set webview HTML content
+		panel.webview.html = getWebviewContent(logEntries);
+    });
+	
+	const gitExtension = vscode.extensions.getExtension('vscode.git');
+
+	if (gitExtension) {
+		gitExtension.activate().then((api) => {
+			if (api) {
+				// Log repository changes
+				api.onDidChangeRepository((repository: any) => {
+					if (repository) {
+						const logEntry = `Repository changed: ${repository.rootUri.path}`;
+						console.log(logEntry);
+						logEntries.push(logEntry);
+						vscode.window.showInformationMessage(logEntry);
+						vscode.workspace.getConfiguration().update('codeHistoryPro.logEntries', logEntries, vscode.ConfigurationTarget.Global);
+					}
+				});
+
+				// Attempt to log commits
+				api.repositories.forEach((repo: any) => {
+					repo.state.onDidChange(() => {
+						const logEntry = `Repository state changed: ${repo.rootUri.path}`;
+						console.log(logEntry);
+						logEntries.push(logEntry);
+						vscode.window.showInformationMessage(logEntry);
+						vscode.workspace.getConfiguration().update('codeHistoryPro.logEntries', logEntries, vscode.ConfigurationTarget.Global);
+					});
+				});
+			}
+		});
+    } 
+	else {
+        console.log('Git extension not found');
+    }
+
+	
+
+    context.subscriptions.push(disposable);
+}
+
 export function deactivate() {}
